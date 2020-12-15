@@ -89,15 +89,15 @@ num_links = len(human_pose['skeleton'])
 print("pass ")
 
 print('------ model = resnet--------')
-MODEL_WEIGHTS = '/home/ee201511281/trt_pose/tasks/human_pose/resnet18_baseline_att_224x224_A_epoch_249.pth'
-OPTIMIZED_MODEL = '/home/ee201511281/trt_pose/tasks/human_pose/resnet18_baseline_att_224x224_A_epoch_249_trt.pth'
+MODEL_WEIGHTS = '/home/ee201511400/for_term/ee201511281/tensorRT-yolo/tensorrt_demos/resnet18_baseline_att_224x224_A_epoch_249.pth'
+OPTIMIZED_MODEL = '/home/ee201511400/for_term/ee201511281/tensorRT-yolo/tensorrt_demos/resnet18_baseline_att_224x224_A_epoch_249_trt.pth'
 model = trt_pose.models.resnet18_baseline_att(num_parts, 2 * num_links).cuda().eval()
 WIDTH = 224
 HEIGHT = 224
 '''
 print('------ model = densenet--------')
-MODEL_WEIGHTS = '/home/ee201511281/trt_pose/tasks/human_pose/densenet121_baseline_att_256x256_B_epoch_160.pth'
-OPTIMIZED_MODEL = '/home/ee201511281/trt_pose/tasks/human_pose/densenet121_baseline_att_256x256_B_epoch_160_trt.pth'
+MODEL_WEIGHTS = '/home/ee201511400/for_term/ee201511281/tensorRT-yolo/tensorrt_demos/densenet121_baseline_att_256x256_B_epoch_160.pth'
+OPTIMIZED_MODEL = '/home/ee201511400/for_term/ee201511281/tensorRT-yolo/tensorrt_demos/densenet121_baseline_att_256x256_B_epoch_160_trt.pth'
 model = trt_pose.models.densenet121_baseline_att(num_parts, 2 * num_links).cuda().eval()
 WIDTH = 256
 HEIGHT = 256
@@ -125,6 +125,17 @@ print(50.0 / (t1 - t0))
 mean = torch.Tensor([0.485, 0.456, 0.406]).cuda()
 std = torch.Tensor([0.229, 0.224, 0.225]).cuda()
 device = torch.device('cuda')
+
+
+BOX_1_WIDTH_START = 250
+BOX_1_WIDTH_END = 400
+BOX_1_HEIGHT_START = 300
+BOX_1_HEIGHT_END = 450
+
+BOX_2_WIDTH_START = 650
+BOX_2_WIDTH_END = 800
+BOX_2_HEIGHT_START = 300
+BOX_2_HEIGHT_END = 450
     
 def preprocess(image):
     global device
@@ -135,10 +146,10 @@ def preprocess(image):
     image.sub_(mean[:, None, None]).div_(std[:, None, None])
     return image[None, ...]
 print("pass4")
-def execute(img, src, people_num,id_position,box_class):
+def execute(img, src, people_num,id_position,box_class,cam):
     color = (0, 255, 0)
     id_position=[]
-    time = []
+    time = [2,2]
     data = preprocess(img)
     cmap, paf = model_trt(data)
     cmap, paf = cmap.detach().cpu(), paf.detach().cpu()
@@ -160,49 +171,84 @@ def execute(img, src, people_num,id_position,box_class):
     #        if(keypoints[0]):
      #           print("keypoint:", keypoints[0])
     #keypoints_agg.sort(key=lambda x:x[11][1])
-    for j in range(len(keypoints_agg)):
+    if(len(keypoints_agg) == 1):
+        #if(keypoints_agg[0][11][1] is not None):
+           # x = round(keypoints_agg[0][11][2]*cam.img_width)
+           # y = round(keypoints_agg[0][11][1]*cam.img_height)
+        if(len(box_class) != 0):
+            if(abs(box_class[0][0]-BOX_1_WIDTH_START) < abs(box_class[0][0]-BOX_2_WIDTH_START)):
+                if(keypoints_agg[0][10][1] is not None):
+                    x1 = round(keypoints_agg[0][10][2]*cam.img_width)
+                    y1 = round(keypoints_agg[0][10][1]*cam.img_height)
+                    id_position = [[box_class[0][0],x1,y1],0]
+                    cv2.circle(src, (x1,y1), 3, color, 2)
+                elif(keypoints_agg[0][9][1] is not None):
+                    x1 = round(keypoints_agg[0][9][2]*cam.img_width)
+                    y1 = round(keypoints_agg[0][9][1]*cam.img_height)
+                    id_position = [[box_class[0][0],x1,y1],0]
+                    cv2.circle(src, (x1,y1), 3, color, 2)
+                box_class=[box_class[0],[0,0]]
+
+            else:
+                if(keypoints_agg[0][9][1] is not None):
+                    x1 = round(keypoints_agg[0][9][2]*cam.img_width)
+                    y1 = round(keypoints_agg[0][9][1]*cam.img_height)
+                    id_position = [0,[box_class[0][0],x1,y1]]
+                    cv2.circle(src, (x1,y1), 3, color, 2)
+                elif(keypoints_agg[0][10][1] is not None):
+                    x1 = round(keypoints_agg[0][10][2]*cam.img_width)
+                    y1 = round(keypoints_agg[0][10][1]*cam.img_height)
+                    id_position = [0,[box_class[0][0],x1,y1]]
+                    cv2.circle(src, (x1,y1), 3, color, 2)
+                box_class=[[0,0], box_class[0]]
+
+    elif(len(keypoints_agg) == 2):
+     for j in range(len(keypoints_agg)):
         if(keypoints_agg[j][11][1] is not None):# right hip
-            id=j
-            x = round(keypoints_agg[j][11][2]*1280)
-            y = round(keypoints_agg[j][11][1]*720)
-            #if(i == people_num_tmp)                         
-          #  id_position[id] = x
+            x = round(keypoints_agg[j][11][2]*cam.img_width)
+            y = round(keypoints_agg[j][11][1]*cam.img_height)
             cv2.circle(src, (x, y), 3, color, 2)
             #left wrist ? right wrist ? 
             #right
             if(len(box_class) == 2):
              if(abs(box_class[0][0]-x) < abs(box_class[1][0]-x)):
                 if(keypoints_agg[j][10][1] is not None):
-                 x1 = round(keypoints_agg[j][10][2]*1280)
-                 y1 = round(keypoints_agg[j][10][1]*720)
-                 id_position.append([x,x1,y1]) #[hip position, wrist position]
+                 x1 = round(keypoints_agg[j][10][2]*cam.img_width)
+                 y1 = round(keypoints_agg[j][10][1]*cam.img_height)
+                 id_position.append([x,x1,y1,'left']) #[hip position, wrist position]
                  cv2.circle(src, (x1,y1), 3, color, 2)
                  print("wrist", x1, y1)
             #left
              elif(abs(box_class[0][0]-x) > abs(box_class[1][0]-x)):
                 if(keypoints_agg[j][9][1] is not None):
-                 x1 = round(keypoints_agg[j][9][2]*1280)
-                 y1 = round(keypoints_agg[j][9][1]*720)
-                 id_position.append([x,x1,y1]) #[hip position, wrist position]
+                 x1 = round(keypoints_agg[j][9][2]*cam.img_width)
+                 y1 = round(keypoints_agg[j][9][1]*cam.img_height)
+                 id_position.append([x,x1,y1,'right']) #[hip position, wrist position]
                  cv2.circle(src, (x1,y1), 3, color, 2)
                  print("wrist", x1, y1)
     
 
     #added part
     #sort as x coordinate ascending
-    id_position = sorted(id_position, key=itemgetter(0))
+    if 0 not in id_position:
+        id_position = sorted(id_position, key=itemgetter(0))
     print("range",len(box_class))
-    if(len(id_position) != len(box_class)):#for recognition errors
+    if(len(id_position) == 1):#for recognition errors
         for i in range(len(box_class)-len(id_position)):
-            id_position.append(0)
+            if(id_position[0][3] == 'left'):
+                id_position = [id_position[0],0]
+            elif(id_position[0][3] == 'right'):
+                id_position = [0,id_position[0]]
     for i in range(len(box_class)):# limited for the person who wears mask
+        if(len(id_position) ==0):
+            break
         if(id_position[i]):
-            if(round(box_class[i][1]) == 1 and ((id_position[i][1]<250 and id_position[i][1]>200 and id_position[i][2] >400 and id_position[i][2] <450) or (id_position[i][1]> 1030 and id_position[i][1] < 1080 and id_position[i][2] >400 and id_position[i][2] < 450))):
-                time.append(1)
+            if(round(box_class[i][1]) == 1 and ((id_position[i][1]<BOX_1_WIDTH_END and id_position[i][1]>BOX_1_WIDTH_START and id_position[i][2] >BOX_1_HEIGHT_START and id_position[i][2] <BOX_1_HEIGHT_END) or (id_position[i][1]> BOX_2_WIDTH_START and id_position[i][1] < BOX_2_WIDTH_END and id_position[i][2] >BOX_2_HEIGHT_START and id_position[i][2] < BOX_2_HEIGHT_END))):
+                time[i]=1
             else:
-                time.append(0)
+                time[i]=0
         else:
-            time.append(2) # 2 for not recognized(skip dicision)
+            time[i]=2 # 2 for not recognized(skip dicision)
     return people_num_tmp,id_position,time
     #end
 
@@ -254,7 +300,7 @@ def loop_and_detect(cam, trt_yolo, conf_th, vis):
     count_t = [0,0]
     flag=[0,0]
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    out_video = cv2.VideoWriter('/home/ee201511400/deutsch_street_3.mp4', fourcc, 30.0 , (1280, 720))
+    out_video = cv2.VideoWriter('/home/ee201511400/test3.mp4', fourcc, 30.0 , (cam.img_width, cam.img_height))
     
     #end
     full_scrn = False
@@ -284,7 +330,7 @@ def loop_and_detect(cam, trt_yolo, conf_th, vis):
         std_box_class.sort(key=lambda x:x[0])
         print(std_box_class)
         img_e = cv2.resize(img, dsize=(WIDTH, HEIGHT), interpolation=cv2.INTER_AREA)
-        people_num,id_position,time_for_disinfection  = execute(img_e, img, people_num,id_position,std_box_class)
+        people_num,id_position,time_for_disinfection  = execute(img_e, img, people_num,id_position,std_box_class,cam)
         if(len(time_for_disinfection) == 2):
             for index, el in enumerate(time_for_disinfection):
                 if(el == 1):
@@ -298,7 +344,22 @@ def loop_and_detect(cam, trt_yolo, conf_th, vis):
                 flag[index] = 1
         print("time_count", count_t);
         for index, el in enumerate(flag):
-            if(len(std_box_class)==2):
+            if(len(id_position) is not 0 and id_position[index] is not 0 and people_num==1):
+                if(el == 1):
+                    if(index == 1):
+                        cv2.putText(img, "You are allowed to enter", (400,50), cv2.FONT_HERSHEY_SIMPLEX, 1.0,(32,32,32), 1, cv2.LINE_AA)
+                    else:
+                         cv2.putText(img, "You are allowed to enter", (200,50), cv2.FONT_HERSHEY_SIMPLEX, 1.0,(32,32,32), 1, cv2.LINE_AA)
+
+                else:
+                    if(index == 1 ):
+                        cv2.putText(img, "You are not allowed to enter", (400,50), cv2.FONT_HERSHEY_SIMPLEX, 1.0,(32,32,32), 1, cv2.LINE_AA)
+                    else:
+                         cv2.putText(img, "You are not allowed to enter", (200,50), cv2.FONT_HERSHEY_SIMPLEX, 1.0,(32,32,32), 1, cv2.LINE_AA)
+                
+
+
+            elif(len(std_box_class)==2):
              if(el == 1):
                 cv2.putText(img, "You are allowed to enter", (std_box_class[index][0],50), cv2.FONT_HERSHEY_SIMPLEX, 1.0,(32,32,32), 1, cv2.LINE_AA)
                 #if((id_position[index][1] <= 10) or (id_position[index][1] >= 1270)):
@@ -325,8 +386,8 @@ def loop_and_detect(cam, trt_yolo, conf_th, vis):
         
         cv2.putText(img, 'peaple = ' + str(people_num), (11, 400), font, 5.0, (32, 32, 32), 4, line)
         cv2.putText(img, 'peaple = ' + str(people_num), (10, 400), font, 5.0, (240, 240, 240), 1, line)
-        cv2.rectangle(img,(200,400),(250,450),(0,255,0),3)
-        cv2.rectangle(img,(1030,400),(1080,450),(0,255,0),3)
+        cv2.rectangle(img,(BOX_1_WIDTH_START,BOX_1_HEIGHT_START),(BOX_1_WIDTH_END,BOX_1_HEIGHT_END),(0,255,0),3)
+        cv2.rectangle(img,(BOX_2_WIDTH_START,BOX_2_HEIGHT_START),(BOX_2_WIDTH_END,BOX_2_HEIGHT_END),(0,255,0),3)
         
         people_num = 0
         cv2.imshow(WINDOW_NAME, img)        
